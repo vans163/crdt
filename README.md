@@ -26,7 +26,7 @@ Without crdt your flow might look like the following, the client presses a butto
   
 Phew.  
   
-With crdt your flow now looks like, the client presses a button to start the container, the container data model on the client end changes its power switch to on, the update propogates to the logic core which validates the power switch value, the worker node eventually receives an event that the power switch value was changed, the worker node eventually starts the container, the worker node sets the power to on for the container, the client eventually receives confirmation that the container is powered on. Much better!
+With crdt your flow now looks like, the client presses a button to start the container, the container data model on the client changes its power switch to on, the update propogates to the logic core which validates the power switch value, the worker node eventually receives an event that the power switch value was changed, the worker node eventually starts the container, the worker node sets the power to on for the container, the client eventually receives confirmation that the container is powered on. Much better!
 
 ## Assumptions
 
@@ -45,9 +45,12 @@ To keep crdt simple we must make some assumptions.
   - a master logic node
     - responsible to validate the crdt merges
     - responsible to syncronize with the persistent database
+    - responsible for replication rules
+    - responsible for basic access levels
     - currently waiting for R20 distributed erlang changes
     - no idea how to implement node pooling right now
     - the above will be removed time come
+    
 
 ## Usage
 ### merge/3, merge/4
