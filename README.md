@@ -50,6 +50,9 @@ To keep crdt simple we must make some assumptions.
     - currently waiting for R20 distributed erlang changes
     - no idea how to implement node pooling right now
     - the above will be removed time come
+  - mnesia used for the consistent store
+    - table name and record name must match
+  - module named after mnesia table (and record)
     
 
 ## Usage

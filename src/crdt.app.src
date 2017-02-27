@@ -1,0 +1,17 @@
+{application, crdt,
+ [
+  {mod, { crdt_app, []}},
+
+  {description, "CRDT - a simple eventually consistent layer"},
+  {vsn, "0.1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {env, []},
+
+  {maintainers, ["vans163"]},
+  {licenses,["GPL-3.0"]},
+  {links,[{"Github","https://github.com/vans163/crdt"}]}
+ ]}.
