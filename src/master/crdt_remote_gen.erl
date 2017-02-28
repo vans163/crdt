@@ -45,14 +45,21 @@ handle_call(local_subscribe, {Pid, _}, S) ->
 handle_call({local_subscribe, DbRecordName}, {Pid, _}, S) -> 
     LSEts = maps:get(ls_ets, S),
     State = maps:get(state, S),
+    DbState = maps:get(DbRecordName, State, #{}),
     true = ets:insert(LSEts, {{Pid, DbRecordName}, #{}}),
-    {reply, State, S};
+    {reply, DbState, S};
 handle_call({local_subscribe, DbRecordName, Fields}, {Pid, _}, S) when is_list(Fields) -> 
     LSEts = maps:get(ls_ets, S),
     State = maps:get(state, S),
+    DbState = maps:get(DbRecordName, State, #{}),
+    DbState2 = p_without_diff(Fields, DbState),
     true = ets:insert(LSEts, {{Pid, DbRecordName}, #{fields=> Fields}}),
-    {reply, State, S}.
+    {reply, DbState2, S}.
 
+p_without_diff(Fields, Diff) ->
+    maps:fold(fun(K,V,A) ->
+            A#{K=> maps:without(Fields, V)}
+        end, #{}, Diff).
 
 p_proc_local_subcribe(LSEts, DbRecordName, Diff) ->
     Subs = ets:tab2list(LSEts),
@@ -61,7 +68,7 @@ p_proc_local_subcribe(LSEts, DbRecordName, Diff) ->
             Pid ! {crdt_diff, DbRecordName, Diff};
 
         ({{Pid, DbRecordName2}, #{fields:= Fields}}) when DbRecordName2 =:= DbRecordName ->
-            case maps:without(Fields, Diff) of
+            case p_without_diff(Fields, Diff) of
                 Diff2 when erlang:map_size(Diff2) =:= 0 -> ignore;
                 Diff2 -> Pid ! {crdt_diff, DbRecordName, Diff2}
             end;

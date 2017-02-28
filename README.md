@@ -74,6 +74,7 @@ mnesia:create_table(db_test, [
     {attributes, record_info(fields, db_test)}, 
     {type, ordered_set}
 ]),
+mnesia:wait_for_tables(mnesia:system_info(local_tables), infinity),
 
 crdt:master_mnesia_subscribe(db_test).
 ```
@@ -97,7 +98,12 @@ receive
         DbTest2 = crdt_etc:nested_merge(DbTest, Diff),
         DbTest3 = crdt_etc:nested_delete(DbTest2),
         FullStateMapUpdated = maps:put(db_test, DbTest3, FullStateMap)
-end
+end,
+
+FullDbTestStateMap = crdt:local_subscribe(DbRecordName),
+%..
+FullDbTestStateMapFiltered = crdt:local_subscribe(DbRecordName, [name]),
+%..
 ```
 
 ## API
