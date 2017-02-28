@@ -94,8 +94,8 @@ FullStateMap = crdt:local_subscribe(),
 receive 
     {crdt_diff, db_test, Diff} -> 
         DbTest = maps:get(db_test, FullStateMap, #{}),
-        DbTest2 = nested_merge(DbTest, Diff),
-        DbTest3 = nested_delete(DbTest2),
+        DbTest2 = crdt_etc:nested_merge(DbTest, Diff),
+        DbTest3 = crdt_etc:nested_delete(DbTest2),
         FullStateMapUpdated = maps:put(db_test, DbTest3, FullStateMap)
 end
 ```
