@@ -131,4 +131,4 @@ crdt:merge({perfect, 10000}, db_container, Uuid, #{power=> true});
 Get the map data structure of the row as it is currently available on the local node.
 ```erlang
 crdt:get(db_container, Uuid);
-```   
+```

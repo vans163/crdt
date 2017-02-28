@@ -38,7 +38,8 @@ erlang:map_size(Diff) > 0
     DbRecordName = maps:get(dbrecordname, S),
     Diff = maps:get(diff, S),
     State = maps:get(state, S),
-    StateNew = maps:merge(State, Diff),
+    
+    StateNew = nested_merge(State, Diff),
     StateFinal = nested_delete(StateNew),
 
     Parent ! {crdt_master_diff, DbRecordName, Diff},
@@ -57,14 +58,13 @@ handle_info({mnesia_table_event, {write, _, {_, Uuid, State}, [], _}}, S) ->
 
 % -- Modify
 handle_info({mnesia_table_event, {write, _, {_, Uuid, NewState}, [{_, Uuid, OldState}], _}}, S) ->
-    Diff = maps:get(diff, S),
-    DiffUuidMap = maps:get(Uuid, Diff, #{}),
-
     case diff_map(OldState, NewState) of
         OldNewDiff when erlang:map_size(OldNewDiff) =:= 0 ->
             {noreply, S};
-            
+
         OldNewDiff ->
+            Diff = maps:get(diff, S),
+            DiffUuidMap = maps:get(Uuid, Diff, #{}),
             DiffUuidMapNew = nested_merge(DiffUuidMap, OldNewDiff),
             DiffNew = maps:put(Uuid, DiffUuidMapNew, Diff),
             {noreply, S#{diff=> DiffNew}}
