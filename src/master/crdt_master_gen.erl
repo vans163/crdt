@@ -104,10 +104,10 @@ handle_info({'EXIT', Pid, Reason}, S) ->
 
 
 handle_info({crdt_master_diff, DbRecordName, Diff}, S) ->
-    io:format("~p: Got crdt master diff~n ~p~n ~p~n", [?MODULE, DbRecordName, Diff]),
+    %io:format("~p: Got crdt master diff~n ~p~n ~p~n", [?MODULE, DbRecordName, Diff]),
     Ets = maps:get(rs_ets, S),
     RemoteSubs = ets:tab2list(Ets),
-    io:format("~p: remote subs ~p~n", [?MODULE, RemoteSubs]),
+    %io:format("~p: remote subs ~p~n", [?MODULE, RemoteSubs]),
     Pids = [Pid||{_,#{pid:=Pid}}<-RemoteSubs],
 
     lists:foreach(fun(Pid) -> 

@@ -81,7 +81,7 @@ p_proc_local_subcribe(LSEts, DbRecordName, Diff) ->
 
 
 handle_info({crdt_remote_diff, DbRecordName, Diff}, S) ->
-    io:format("~p: Got crdt remote diff~n ~p~n ~p~n", [?MODULE, DbRecordName, Diff]),
+    %io:format("~p: Got crdt remote diff~n ~p~n ~p~n", [?MODULE, DbRecordName, Diff]),
     LSEts = maps:get(ls_ets, S),
     State = maps:get(state, S),
     DbRecord = maps:get(DbRecordName, State, #{}),
