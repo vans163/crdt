@@ -10,7 +10,8 @@ init([]) ->
         {
             {one_for_one, 2, 10}, 
             [
-                {crdt_gen, {crdt_gen, start_link, []}, permanent, 5000, worker, dynamic}
+                {crdt_master_gen, {crdt_master_gen, start_link, []}, permanent, 5000, worker, dynamic},
+                {crdt_remote_gen, {crdt_remote_gen, start_link, []}, permanent, 5000, worker, dynamic}
             ]
         }
     }.

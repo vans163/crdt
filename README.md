@@ -52,10 +52,57 @@ To keep crdt simple we must make some assumptions.
     - the above will be removed time come
   - mnesia used for the consistent store
     - table name and record name must match
+    - currently only mnesia is supported
   - module named after mnesia table (and record)
     
+## Current Status
+  - One way change subscriptions work
 
 ## Usage
+
+```erlang
+% Master Node
+-record(db_test, {uuid, state}).
+
+application:ensure_all_started(crdt),
+
+mnesia:create_schema([node()]),
+application:ensure_all_started(mnesia),
+
+mnesia:create_table(db_test, [
+    {disc_copies, [node()]},
+    {attributes, record_info(fields, db_test)}, 
+    {type, ordered_set}
+]),
+
+crdt:master_mnesia_subscribe(db_test).
+```
+
+```erlang
+% Slave Nodes
+application:ensure_all_started(crdt),
+
+net_adm:ping('master_node@0.0.0.0'),
+crdt:join('master_node@0.0.0.0'),
+
+FullStateMap = crdt:get(),
+FullDbTestStateMap = crdt:get(db_test),
+SingleDbTestStateMap = crdt:get(db_test, Uuid),
+
+% subscribe to notifications
+FullStateMap = crdt:local_subscribe(),
+receive 
+    {crdt_diff, db_test, Diff} -> 
+        DbTest = maps:get(db_test, FullStateMap, #{}),
+        DbTest2 = nested_merge(DbTest, Diff),
+        DbTest3 = nested_delete(DbTest2),
+        FullStateMapUpdated = maps:put(db_test, DbTest3, FullStateMap)
+end
+```
+
+## API
+This has not been updated yet. Refer to usage example.
+
 ### merge/3, merge/4
 merge/3 eventually replicates the changes. It is asyncronous.  
 If validation on the logic core fails the changes are ignored.  

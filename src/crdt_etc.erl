@@ -65,3 +65,11 @@ nested_merge(Old, New) when is_map(Old), is_map(New) ->
     ),
     Merge = maps:merge(Map2, Map3),
     maps:merge(Old, Merge).
+
+nested_delete(Map) when is_map(Map) ->
+    DelKey = delete_KEY(),
+    maps:fold(
+        fun(K,V,A) when is_map(V) -> A#{K=> nested_delete(V)};
+           (_,V,A) when V =:= DelKey -> A;
+           (K,V,A) -> A#{K=> V}
+        end, #{}, Map).
