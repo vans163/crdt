@@ -58,7 +58,11 @@ handle_call({local_subscribe, DbRecordName, Fields}, {Pid, _}, S) when is_list(F
 
 p_with_diff(Fields, Diff) ->
     maps:fold(fun(K,V,A) ->
-            A#{K=> maps:with(Fields, V)}
+        With = maps:with(Fields, V),
+            case erlang:map_size(With) of
+                0 -> A;
+                _ -> A#{K=> With}
+            end
         end, #{}, Diff).
 
 p_proc_local_subcribe(LSEts, DbRecordName, Diff) ->
