@@ -60,7 +60,7 @@ p_with_diff(Fields, Diff) ->
     DelKey = delete_KEY(),
     maps:fold(fun
           (K,V,A) when V =:= DelKey -> 
-            A;
+            A#{K=> V};
           (K,V,A) -> 
             With = maps:with(Fields, V),
             case erlang:map_size(With) of
