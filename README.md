@@ -101,8 +101,9 @@ receive
 end,
 
 FullDbTestStateMap = crdt:local_subscribe(DbRecordName),
+PartialDbTestStateMap = crdt:local_subscribe(DbRecordName, [<<"43a3-4334-34-3434">>]),
 %..
-FullDbTestStateMapFiltered = crdt:local_subscribe(DbRecordName, [name]),
+FullDbTestStateMapFields = crdt:local_subscribe(DbRecordName, [], [name, address]),
 %..
 ```
 

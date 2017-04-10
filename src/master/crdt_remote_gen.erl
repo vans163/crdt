@@ -48,13 +48,23 @@ handle_call({local_subscribe, DbRecordName}, {Pid, _}, S) ->
     DbState = maps:get(DbRecordName, State, #{}),
     true = ets:insert(LSEts, {{Pid, DbRecordName}, #{}}),
     {reply, DbState, S};
-handle_call({local_subscribe, DbRecordName, Fields}, {Pid, _}, S) when is_list(Fields) -> 
+handle_call({local_subscribe, DbRecordName, Keys}, {Pid, _}, S) when is_list(Keys) -> 
     LSEts = maps:get(ls_ets, S),
     State = maps:get(state, S),
     DbState = maps:get(DbRecordName, State, #{}),
-    DbState2 = p_with_diff(Fields, DbState),
-    true = ets:insert(LSEts, {{Pid, DbRecordName}, #{fields=> Fields}}),
-    {reply, DbState2, S}.
+    DbState2 = p_with_keys(Keys, DbState),
+    true = ets:insert(LSEts, {{Pid, DbRecordName}, #{keys=> Keys}}),
+    {reply, DbState2, S};
+handle_call({local_subscribe, DbRecordName, Keys, Fields}, {Pid, _}, S) when is_list(Keys), is_list(Fields) -> 
+    LSEts = maps:get(ls_ets, S),
+    State = maps:get(state, S),
+    DbState = maps:get(DbRecordName, State, #{}),
+    DbState2 = p_with_keys(Keys, DbState),
+    DbState3 = p_with_diff(Fields, DbState2),
+    true = ets:insert(LSEts, {{Pid, DbRecordName}, #{keys=> Keys, fields=> Fields}}),
+    {reply, DbState3, S}.
+
+p_with_keys(Keys, Diff) -> maps:with(Keys, Diff).
 
 p_with_diff(Fields, Diff) ->
     maps:fold(fun(K,V,A) ->
@@ -71,10 +81,18 @@ p_proc_local_subcribe(LSEts, DbRecordName, Diff) ->
         ({{Pid, all}, _}) ->
             Pid ! {crdt_diff, DbRecordName, Diff};
 
-        ({{Pid, DbRecordName2}, #{fields:= Fields}}) when DbRecordName2 =:= DbRecordName ->
-            case p_with_diff(Fields, Diff) of
+        ({{Pid, DbRecordName2}, #{keys:= Keys}}) when DbRecordName2 =:= DbRecordName ->
+            case p_with_keys(Keys, Diff) of
                 Diff2 when erlang:map_size(Diff2) =:= 0 -> ignore;
                 Diff2 -> Pid ! {crdt_diff, DbRecordName, Diff2}
+            end;
+
+        ({{Pid, DbRecordName2}, #{keys:= Keys, fields:= Fields}}) when DbRecordName2 =:= DbRecordName ->
+            Diff2 = p_with_keys(Keys, Diff),
+            Diff3 = p_with_diff(Fields, Diff2),
+            case Diff3 of
+                Diff4 when erlang:map_size(Diff4) =:= 0 -> ignore;
+                Diff4 -> Pid ! {crdt_diff, DbRecordName, Diff4}
             end;
 
         ({{Pid, DbRecordName2}, _}) when DbRecordName2 =:= DbRecordName ->
