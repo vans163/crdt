@@ -67,8 +67,12 @@ handle_call({local_subscribe, DbRecordName, Keys, Fields}, {Pid, _}, S) when is_
 p_with_keys(Keys, Diff) -> maps:with(Keys, Diff).
 
 p_with_diff(Fields, Diff) ->
-    maps:fold(fun(K,V,A) ->
-        With = maps:with(Fields, V),
+    DelKey = delete_KEY(),
+    maps:fold(fun
+          (K,V,A) when V =:= DelKey -> 
+            A#{K=> V};
+          (K,V,A) -> 
+            With = maps:with(Fields, V),
             case erlang:map_size(With) of
                 0 -> A;
                 _ -> A#{K=> With}
