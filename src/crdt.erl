@@ -25,13 +25,13 @@ local_subscribe() ->
     gen_server:call(crdt_remote_gen, local_subscribe).
 local_subscribe(DbRecordName) ->
     gen_server:call(crdt_remote_gen, {local_subscribe, DbRecordName}).
-local_subscribe(DbRecordName, Keys) ->
-    gen_server:call(crdt_remote_gen, {local_subscribe, DbRecordName, Keys}).
-local_subscribe(DbRecordName, Keys, Fields) ->
-    gen_server:call(crdt_remote_gen, {local_subscribe, DbRecordName, Keys, Fields}).
-
-
-
-
-local_subscribe2(DbRecordName, MapArgs) ->
+local_subscribe(DbRecordName, MapArgs) ->
     gen_server:call(crdt_remote_gen, {local_subscribe, DbRecordName, MapArgs}).
+%local_subscribe(DbRecordName, Keys) ->
+%    gen_server:call(crdt_remote_gen, {local_subscribe, DbRecordName, Keys}).
+%local_subscribe(DbRecordName, Keys, Fields) ->
+%    gen_server:call(crdt_remote_gen, {local_subscribe, DbRecordName, Keys, Fields}).
+
+
+
+
