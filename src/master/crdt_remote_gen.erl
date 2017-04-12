@@ -64,8 +64,8 @@ handle_call({local_subscribe, DbRecordName, MapArgs2}, {Pid, _}, S) when is_map(
     true = ets:insert(LSEts, {{Pid, DbRecordName}, MapArgs}),
 
     DbState2 = p_with_keys(Keys, DbState),
-    DbState3 = p_mutate(Mutator, DbState2),
-    DbState4 = p_with_diff(Fields, DbState3),
+    DbState3 = p_with_diff(Fields, DbState2),
+    DbState4 = p_mutate(Mutator, DbState3),
 
     {reply, DbState4, S}.
 
@@ -113,8 +113,8 @@ p_proc_local_subcribe(LSEts, DbRecordName, Diff) ->
         ({{Pid, DbRecordName2}, #{keys:= Keys, fields:= Fields, mutator:= Mutator}}) 
         when DbRecordName2 =:= DbRecordName ->
             Diff2 = p_with_keys(Keys, Diff),
-            Diff3 = p_mutate(Mutator, Diff2),
-            Diff4 = p_with_diff(Fields, Diff3),
+            Diff3 = p_with_diff(Fields, Diff2),
+            Diff4 = p_mutate(Mutator, Diff3),
             case Diff4 of
                 Diff5 when erlang:map_size(Diff5) =:= 0 -> ignore;
                 Diff5 -> Pid ! {crdt_diff, DbRecordName, Diff5}
