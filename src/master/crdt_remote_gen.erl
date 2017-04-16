@@ -55,7 +55,7 @@ handle_call({local_subscribe, DbRecordName, MapArgs2}, {Pid, _}, S) when is_map(
     DbState = maps:get(DbRecordName, State, #{}),
 
     MapArgs = maps:merge(
-        #{keys=> [], fields=> [], mutator_context=> #{}, mutator=> fun(Diff)-> Diff end},
+        #{keys=> [], fields=> [], mutator_context=> #{}, mutator=> fun(_,Diff)-> Diff end},
         MapArgs2),
     Keys = maps:get(keys, MapArgs),
     Fields = maps:get(fields, MapArgs),
