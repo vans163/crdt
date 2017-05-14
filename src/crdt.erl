@@ -7,11 +7,8 @@ master_mnesia_subscribe(DbRecordName) ->
 master_mnesia_unsubscribe(DbRecordName) -> 
     gen_server:call(crdt_master_gen, {mnesia_unsubscribe, DbRecordName}).
 
-join_remote() ->
-	gen_server:call(crdt_remote_gen, join_remote).
-
-join(MasterNode) ->
-    gen_server:call(crdt_remote_gen, {join, MasterNode}).
+remote_subscribe() ->
+    gen_server:call(crdt_remote_gen, join_remote).
 
 
 merge(_DbRecordName,_Uuid,_Map) -> not_implemented.
