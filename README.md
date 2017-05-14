@@ -62,9 +62,10 @@ To keep crdt simple we must make some assumptions.
 
 ```erlang
 % Master Node
--record(db_test, {uuid, state}).
+-record(db_test, {uuid, data}).
 
 application:ensure_all_started(crdt),
+crdt:master(),
 
 mnesia:create_schema([node()]),
 application:ensure_all_started(mnesia),
@@ -84,7 +85,7 @@ crdt:master_mnesia_subscribe(db_test).
 application:ensure_all_started(crdt),
 
 net_adm:ping('master_node@0.0.0.0'),
-crdt:join('master_node@0.0.0.0'),
+crdt:remote_subscribe(),
 
 FullStateMap = crdt:get(),
 FullDbTestStateMap = crdt:get(db_test),
@@ -100,11 +101,16 @@ receive
         FullStateMapUpdated = maps:put(db_test, DbTest3, FullStateMap)
 end,
 
+UserUuid = <<"bb46acaf-ee4b-4f7d-be5d-b8634af961e9">>,
 FullDbTestStateMap = crdt:local_subscribe(DbRecordName),
-PartialDbTestStateMap = crdt:local_subscribe(DbRecordName, [<<"43a3-4334-34-3434">>]),
-%..
-FullDbTestStateMapFields = crdt:local_subscribe(DbRecordName, [], [name, address]),
-%..
+PartialDbTestStateMap = crdt:local_subscribe(DbRecordName, #{
+    keys=> [UserUuid], 
+    fields=> [email], 
+    mutator=> {__MODULE__, crdt_mutate_test, [UserUuid, Arg2]}
+})
+
+crdt_mutate_test(Diff, UserUuid, Arg2) ->
+  maps:get(key, Diff, #{}).
 ```
 
 ## API
