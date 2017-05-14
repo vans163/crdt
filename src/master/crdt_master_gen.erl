@@ -16,7 +16,7 @@ init([]) ->
     MEts = ets:new(mnesia_subscription_ets, [ordered_set, private]),
     catch ets:new(crdt_master_config, [ordered_set, public, named_table]),
 
-    erlang:send_after(1, self(), scan_pg2)
+    erlang:send_after(1, self(), scan_pg2),
     {ok, #{ms_ets=> MEts, r_subs=> #{}}}.
 
 
@@ -49,7 +49,7 @@ p_remote_subscribe(RemotePid, MEts, RSubs) ->
         undefined ->
             p_remote_send_base_state(RemotePid, MEts),
             _Ref = erlang:monitor(process, RemotePid), 
-            RSubs#{Node=> #{pid=> RemotePid}}
+            RSubs#{Node=> #{pid=> RemotePid}};
         _ -> RSubs
     end.
 p_remote_unsubscribe(RemotePid, RSubs) ->
@@ -69,14 +69,7 @@ handle_call({mnesia_subscribe, DbRecordName}, _, S) ->
 handle_call({mnesia_unsubscribe, DbRecordName}, _, S) ->
     Ets = maps:get(ms_ets, S),
     p_mnesia_unsubscribe(DbRecordName, Ets),
-    {reply, ok, S};
-
-
-handle_call(join_rpc, {SubscriberPid, _}, S) ->
-    MEts = maps:get(ms_ets, S),
-    RSubs = maps:get(r_subs, S),
-    RSubs2 = p_remote_subscribe2(SubscriberPid, MEts, RSubs),
-    {reply, ok, S#{r_subs=> RSubs2}}.
+    {reply, ok, S}.
 
 
 handle_info(scan_pg2, S) ->
@@ -90,8 +83,8 @@ handle_info(scan_pg2, S) ->
             p_remote_subscribe(RemotePid, MEts, _RSubs)
         end, RSubs, NewPids),
 
-    erlang:send_after(2000, self(), scan_pg2)
-    {noreply, S#{r_subs=> RSubs}}.
+    erlang:send_after(2000, self(), scan_pg2),
+    {noreply, S#{r_subs=> RSubs2}};
 
 handle_info({'DOWN', _Ref, process, Pid, Reason}, S) ->
     io:format("~p:~n DOWN because~n ~p~n", [?MODULE, Reason]),
