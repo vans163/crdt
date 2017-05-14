@@ -7,6 +7,9 @@ master_mnesia_subscribe(DbRecordName) ->
 master_mnesia_unsubscribe(DbRecordName) -> 
     gen_server:call(crdt_master_gen, {mnesia_unsubscribe, DbRecordName}).
 
+master() ->
+	gen_server:call(crdt_master_gen, start_master).
+
 remote_subscribe() ->
     gen_server:call(crdt_remote_gen, join_remote).
 

@@ -15,8 +15,12 @@ init([]) ->
     io:format("~p: Started!~n", [?MODULE]),
     MEts = ets:new(mnesia_subscription_ets, [ordered_set, private]),
     catch ets:new(crdt_master_config, [ordered_set, public, named_table]),
+    case ets:lookup(crdt_master_config, is_master) of
+        [{is_master, true}] ->
+            erlang:send_after(1, self(), scan_pg2);
+        _-> ignore
+    end,
 
-    erlang:send_after(1, self(), scan_pg2),
     {ok, #{ms_ets=> MEts, r_subs=> #{}}}.
 
 
@@ -61,6 +65,10 @@ p_remote_broadcast(Pids, DbRecordName, Diff) ->
         Pid ! {crdt_remote_diff, DbRecordName, Diff}
     end, Pids). 
 
+handle_call(start_master, _, S) ->
+    ets:insert(crdt_master_config, {is_master, true}),
+    erlang:send_after(1, self(), scan_pg2),
+    {reply, ok, S};
 
 handle_call({mnesia_subscribe, DbRecordName}, _, S) ->
     Ets = maps:get(ms_ets, S),

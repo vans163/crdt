@@ -20,7 +20,6 @@ init([]) ->
 
 
 handle_call(join_remote, _, S) ->
-    pg2:create(crdt),
     pg2:join(crdt, self()),
     {reply, ok, S};
 
