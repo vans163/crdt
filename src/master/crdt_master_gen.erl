@@ -14,10 +14,10 @@ init([]) ->
     process_flag(trap_exit, true),
     io:format("~p: Started!~n", [?MODULE]),
     MEts = ets:new(mnesia_subscription_ets, [ordered_set, private]),
-    REts = ets:new(remote_subscription_ets, [ordered_set, private]),
     catch ets:new(crdt_master_config, [ordered_set, public, named_table]),
 
-    {ok, #{ms_ets=> MEts, rs_ets=> REts}}.
+    erlang:send_after(1, self(), scan_pg2)
+    {ok, #{ms_ets=> MEts, r_subs=> #{}}}.
 
 
 p_mnesia_subscribe(DbRecordName, Ets) ->
@@ -43,19 +43,18 @@ p_remote_send_base_state(RemotePid, MEts) ->
         RemotePid ! {crdt_remote_diff, DbRecordName, State}
     end, MPids).
 
-p_remote_subscribe(RemotePid, MEts, REts) ->
+p_remote_subscribe(RemotePid, MEts, RSubs) ->
     Node = erlang:node(RemotePid),
-    case ets:lookup(REts, Node) of
-        [] ->
+    case maps:get(Node, RSubs, undefined) of
+        undefined ->
             p_remote_send_base_state(RemotePid, MEts),
             _Ref = erlang:monitor(process, RemotePid), 
-            true = ets:insert(REts, {Node, #{pid=> RemotePid}});
-        _ -> ignore
+            RSubs#{Node=> #{pid=> RemotePid}}
+        _ -> RSubs
     end.
-p_remote_unsubscribe(RemotePid, Ets) ->
+p_remote_unsubscribe(RemotePid, RSubs) ->
     Node = erlang:node(RemotePid),
-    ets:delete(Ets, Node).
-
+    maps:remove(Node, RSubs).
 
 p_remote_broadcast(Pids, DbRecordName, Diff) ->
     lists:foreach(fun(Pid) -> 
@@ -75,17 +74,30 @@ handle_call({mnesia_unsubscribe, DbRecordName}, _, S) ->
 
 handle_call(join_rpc, {SubscriberPid, _}, S) ->
     MEts = maps:get(ms_ets, S),
-    REts = maps:get(rs_ets, S),
-    p_remote_subscribe(SubscriberPid, MEts, REts),
-    {reply, ok, S}.
+    RSubs = maps:get(r_subs, S),
+    RSubs2 = p_remote_subscribe2(SubscriberPid, MEts, RSubs),
+    {reply, ok, S#{r_subs=> RSubs2}}.
 
 
+handle_info(scan_pg2, S) ->
+    MEts = maps:get(ms_ets, S),
+    RSubs = maps:get(r_subs, S),
+    Pids = [Pid||{_,#{pid:=Pid}}<-maps:to_list(RSubs)],
+    OldPids = pg2:get_members(crdt),
+    NewPids = OldPids -- Pids,
+
+    RSubs2 = lists:foldl(fun(RemotePid, _RSubs) ->
+            p_remote_subscribe(RemotePid, MEts, _RSubs)
+        end, RSubs, NewPids),
+
+    erlang:send_after(2000, self(), scan_pg2)
+    {noreply, S#{r_subs=> RSubs}}.
 
 handle_info({'DOWN', _Ref, process, Pid, Reason}, S) ->
     io:format("~p:~n DOWN because~n ~p~n", [?MODULE, Reason]),
-    Ets = maps:get(rs_ets, S),
-    p_remote_unsubscribe(Pid, Ets),
-    {noreply, S};
+    RSubs = maps:get(r_subs, S),
+    RSubs2 = p_remote_unsubscribe(Pid, RSubs),
+    {noreply, S#{r_subs=> RSubs2}};
 
 handle_info({'EXIT', Pid, Reason}, S) ->
     Ets = maps:get(ms_ets, S),
@@ -105,10 +117,9 @@ handle_info({'EXIT', Pid, Reason}, S) ->
 
 handle_info({crdt_master_diff, DbRecordName, Diff}, S) ->
     %io:format("~p: Got crdt master diff~n ~p~n ~p~n", [?MODULE, DbRecordName, Diff]),
-    Ets = maps:get(rs_ets, S),
-    RemoteSubs = ets:tab2list(Ets),
+    RSubs = maps:get(r_subs, S),
+    Pids = [Pid||{_,#{pid:=Pid}}<-maps:to_list(RSubs)],
     %io:format("~p: remote subs ~p~n", [?MODULE, RemoteSubs]),
-    Pids = [Pid||{_,#{pid:=Pid}}<-RemoteSubs],
 
     lists:foreach(fun(Pid) -> 
         Pid ! {crdt_remote_diff, DbRecordName, Diff}
