@@ -18,9 +18,7 @@ init([]) ->
 
     {ok, #{state=> #{}, ls_ets=> LSEts}}.
 
-handle_call({join, MasterNode}, _, S) ->
-    ok = gen_server:call({crdt_master_gen, MasterNode}, join_rpc),
-    {reply, ok, S};
+
 handle_call(join_remote, _, S) ->
     pg2:create(crdt),
     pg2:join(crdt, self()),
