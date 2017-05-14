@@ -56,7 +56,7 @@ handle_call({local_subscribe, DbRecordName, MapArgs2}, {Pid, _}, S) when is_map(
     DbState = maps:get(DbRecordName, State, #{}),
 
     MapArgs = maps:merge(
-        #{keys=> [], fields=> [], mutator=> {:erlang, :byte_size, [<<>>]}},
+        #{keys=> [], fields=> [], mutator=> {erlang, byte_size, [<<>>]}},
         MapArgs2),
     Keys = maps:get(keys, MapArgs),
     Fields = maps:get(fields, MapArgs),
