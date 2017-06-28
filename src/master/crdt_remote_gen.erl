@@ -46,8 +46,8 @@ handle_call(local_subscribe, {Pid, _}, S) ->
 handle_call({local_subscribe, DbRecordName}, {Pid, _}, S) -> 
     LSEts = maps:get(ls_ets, S),
     State = maps:get(state, S),
-    true = ets:insert(LSEts, {{Pid, DbRecordName}, #{}}),
     DbState = maps:get(DbRecordName, State, #{}),
+    true = ets:insert(LSEts, {{Pid, DbRecordName}, #{}}),
     {reply, DbState, S};
 
 handle_call({local_subscribe, DbRecordName, MapArgs2}, {Pid, _}, S) when is_map(MapArgs2) -> 
@@ -64,11 +64,7 @@ handle_call({local_subscribe, DbRecordName, MapArgs2}, {Pid, _}, S) when is_map(
 
     true = ets:insert(LSEts, {{Pid, DbRecordName}, MapArgs}),
 
-    DbState2 = p_with_keys(Keys, DbState),
-    DbState3 = p_with_diff(Fields, DbState2),
-    DbState4 = p_mutate(Mutator, DbState3),
-
-    {reply, DbState4, S}.
+    {reply, {DbState, Keys, Fields, Mutator}, S}.
 
 %handle_call({local_subscribe, DbRecordName, Keys}, {Pid, _}, S) when is_list(Keys) -> 
 %    LSEts = maps:get(ls_ets, S),
@@ -108,25 +104,37 @@ p_with_diff(Fields, Diff) ->
 
 p_proc_local_subcribe(LSEts, DbRecordName, Diff) ->
     Subs = ets:tab2list(LSEts),
-    lists:foreach(fun
-        ({{Pid, all}, _}) ->
-            Pid ! {crdt_diff, DbRecordName, Diff};
+    lists:foldl(fun
+        ({{Pid, all}, _}, Cache) ->
+            Pid ! {crdt_diff, DbRecordName, Diff},
+            Cache;
 
-        ({{Pid, DbRecordName2}, #{keys:= Keys, fields:= Fields, mutator:= Mutator}}) 
+        ({{Pid, DbRecordName2}, Q=#{keys:= Keys, fields:= Fields, mutator:= Mutator}}, Cache) 
         when DbRecordName2 =:= DbRecordName ->
-            Diff2 = p_with_keys(Keys, Diff),
-            Diff3 = p_with_diff(Fields, Diff2),
-            Diff4 = p_mutate(Mutator, Diff3),
-            case Diff4 of
-                Diff5 when erlang:map_size(Diff5) =:= 0 -> ignore;
-                Diff5 -> Pid ! {crdt_diff, DbRecordName, Diff5}
+            Phash = erlang:phash2(Q),
+            case maps:get(Phash, Cache, undefined) of
+                DiffMap when is_map(DiffMap) -> 
+                    Pid ! {crdt_diff, DbRecordName, DiffMap},
+                    Cache;
+
+                undefined ->
+                    Diff2 = p_with_keys(Keys, Diff),
+                    Diff3 = p_with_diff(Fields, Diff2),
+                    Diff4 = p_mutate(Mutator, Diff3),
+                    case Diff4 of
+                        Diff5 when erlang:map_size(Diff5) =:= 0 -> Cache;
+                        Diff5 -> 
+                            Pid ! {crdt_diff, DbRecordName, Diff5},
+                            maps:put(Phash, Diff5, Cache)
+                    end
             end;
 
-        ({{Pid, DbRecordName2}, _}) when DbRecordName2 =:= DbRecordName ->
-            Pid ! {crdt_diff, DbRecordName, Diff};
+        ({{Pid, DbRecordName2}, _}, Cache) when DbRecordName2 =:= DbRecordName ->
+            Pid ! {crdt_diff, DbRecordName, Diff},
+            Cache;
 
-        (_) -> ignore
-    end, Subs).
+        (_,Cache) -> Cache
+    end, #{}, Subs).
 
 
 handle_info({crdt_remote_diff, DbRecordName, Diff}, S) ->
