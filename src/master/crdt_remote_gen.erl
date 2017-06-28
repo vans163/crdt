@@ -56,7 +56,7 @@ handle_call({local_subscribe, DbRecordName, MapArgs2}, {Pid, _}, S) when is_map(
     DbState = maps:get(DbRecordName, State, #{}),
 
     MapArgs = maps:merge(
-        #{keys=> [], fields=> [], mutator=> {erlang, byte_size, [<<>>]}},
+        #{keys=> [], fields=> [], mutator=> undefined},
         MapArgs2),
     Keys = maps:get(keys, MapArgs),
     Fields = maps:get(fields, MapArgs),
@@ -82,6 +82,7 @@ handle_call({local_subscribe, DbRecordName, MapArgs2}, {Pid, _}, S) when is_map(
 %    true = ets:insert(LSEts, {{Pid, DbRecordName}, #{keys=> Keys, fields=> Fields}}),
 %    {reply, DbState3, S}.
 
+p_mutate(undefined, Diff) -> Diff;
 p_mutate({Mod, Fun, Args}, Diff) -> 
     erlang:apply(Mod, Fun, [Diff]++Args).
 
