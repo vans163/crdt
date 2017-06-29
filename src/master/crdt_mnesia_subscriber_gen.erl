@@ -2,7 +2,7 @@
 -behavior(gen_server).
 -compile(export_all).
 
--import(crdt_etc, [delete_KEY/0, merge/1, diff_map/2, nested_merge/2, nested_delete/1]).
+-import(crdt_etc, [delete_KEY/0, merge/1, diff_map/2, nested_merge/2, nested_delete/2]).
 
 handle_cast(_, S) -> {noreply, S}.
 code_change(_OldVersion, S, _Extra) -> {ok, S}. 
@@ -16,39 +16,44 @@ init({Parent, DbRecordName}) ->
     {ok, _} = mnesia:subscribe({table, DbRecordName, detailed}),
     Rows = ets:tab2list(DbRecordName),
     Map = merge([#{Uuid=> State} || {_,Uuid,State}<-Rows]),
-
     erlang:send_after(200, self(), tick_push),
 
     {ok, #{
         dbrecordname=> DbRecordName, 
         parent=> Parent, 
-        state=> Map, 
-        diff=> #{}}}.
+        data=> Map, 
+        diff=> #{},
+        diff_delete=> []
+        }}.
 
-handle_call(state, _, S) -> 
+handle_call(data, _, S) -> 
     DbRecordName = maps:get(dbrecordname, S),
-    State = maps:get(state, S),
-    {reply, {DbRecordName, State}, S}.
+    Data = maps:get(data, S),
+    {reply, {DbRecordName, Data}, S}.
 
 
-handle_info(tick_push, S=#{diff:= Diff}) when 
-erlang:map_size(Diff) > 0 
-->
+handle_info(tick_push, S) ->
     Parent = maps:get(parent, S),
     DbRecordName = maps:get(dbrecordname, S),
     Diff = maps:get(diff, S),
-    State = maps:get(state, S),
-    
-    StateNew = nested_merge(State, Diff),
-    StateFinal = nested_delete(StateNew),
+    DiffDelete = maps:get(diff_delete, S),
+    Data = maps:get(data, S),
 
-    Parent ! {crdt_master_diff, DbRecordName, Diff},
+    Data2 = case erlang:map_size(Diff) of
+        0 -> Data;
+        _ -> 
+            Parent ! {crdt_master_diff, DbRecordName, Diff},
+            nested_merge(Data, Diff)
+    end,
+    Data3 = case length(DiffDelete) of
+        0 -> Data2;
+        _ -> 
+            Parent ! {crdt_master_diff_delete, DbRecordName, DiffDelete},
+            nested_delete(Data2, DiffDelete)
+    end,
 
     erlang:send_after(200, self(), tick_push),
-    {noreply, S#{state=> StateFinal, diff=> #{}}};
-handle_info(tick_push, S) ->
-    erlang:send_after(200, self(), tick_push),
-    {noreply, S};
+    {noreply, S#{data=> Data3, diff=> #{}, diff_delete=> []}};
 
 % -- Add
 handle_info({mnesia_table_event, {write, _, {_, Uuid, State}, [], _}}, S) ->
@@ -70,12 +75,9 @@ handle_info({mnesia_table_event, {write, _, {_, Uuid, NewState}, [{_, Uuid, OldS
             {noreply, S#{diff=> DiffNew}}
     end;
 
-
 % -- Delete
 handle_info({mnesia_table_event, {delete, _, _What, DeletedList, _}}, S) ->
-    Diff = maps:get(diff, S),
-    Uuids = [Uuid||{_,Uuid,_}<-DeletedList],
-    DiffNew = lists:foldl(fun(Uuid, A) ->
-            maps:put(Uuid, delete_KEY(), A)
-        end, Diff, Uuids),
-    {noreply, S#{diff=> DiffNew}}.
+    DiffDelete = maps:get(diff_delete, S),
+    Uuids = [[Uuid]||{_,Uuid,_}<-DeletedList],
+    DiffDelete2 = sets:to_list(sets:from_list(DiffDelete++Uuids)),
+    {noreply, S#{diff_delete=> DiffDelete2}}.

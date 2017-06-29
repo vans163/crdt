@@ -43,7 +43,7 @@ p_remote_send_base_state(RemotePid, MEts) ->
     MSubs = ets:tab2list(MEts),
     MPids = [MPid||{_,#{pid:=MPid}}<-MSubs],
     lists:foreach(fun(MPid) -> 
-        {DbRecordName, State} = gen_server:call(MPid, state),
+        {DbRecordName, State} = gen_server:call(MPid, data),
         RemotePid ! {crdt_remote_diff, DbRecordName, State}
     end, MPids).
 
@@ -59,11 +59,6 @@ p_remote_subscribe(RemotePid, MEts, RSubs) ->
 p_remote_unsubscribe(RemotePid, RSubs) ->
     Node = erlang:node(RemotePid),
     maps:remove(Node, RSubs).
-
-p_remote_broadcast(Pids, DbRecordName, Diff) ->
-    lists:foreach(fun(Pid) -> 
-        Pid ! {crdt_remote_diff, DbRecordName, Diff}
-    end, Pids). 
 
 handle_call(start_master, _, S) ->
     ets:insert(crdt_master_config, {is_master, true}),
@@ -125,5 +120,16 @@ handle_info({crdt_master_diff, DbRecordName, Diff}, S) ->
     lists:foreach(fun(Pid) -> 
         Pid ! {crdt_remote_diff, DbRecordName, Diff}
     end, Pids),
+    {noreply, S};
 
+handle_info({crdt_master_diff_delete, DbRecordName, DeleteList}, S) ->
+    %io:format("~p: Got crdt master diff delete~n ~p~n ~p~n", [?MODULE, DbRecordName, DeleteList]),
+    RSubs = maps:get(r_subs, S),
+    Pids = [Pid||{_,#{pid:=Pid}}<-maps:to_list(RSubs)],
+    %io:format("~p: remote subs ~p~n", [?MODULE, RemoteSubs]),
+
+    lists:foreach(fun(Pid) -> 
+        Pid ! {crdt_remote_diff_delete, DbRecordName, DeleteList}
+    end, Pids),
     {noreply, S}.
+

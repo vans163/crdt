@@ -2,7 +2,7 @@
 -behavior(gen_server).
 -compile(export_all).
 
--import(crdt_etc, [delete_KEY/0, merge/1, diff_map/2, nested_merge/2, nested_delete/1]).
+-import(crdt_etc, [delete_KEY/0, merge/1, diff_map/2, nested_merge/2, nested_delete/2]).
 
 handle_cast(_, S) -> {noreply, S}.
 code_change(_OldVersion, S, _Extra) -> {ok, S}. 
@@ -16,7 +16,8 @@ init([]) ->
     LSEts = ets:new(remote_local_subscription_ets, [ordered_set, private]),
     catch ets:new(crdt_remote_config, [ordered_set, public, named_table]),
 
-    {ok, #{state=> #{}, ls_ets=> LSEts}}.
+    erlang:send_after(500, self(), tick_push),
+    {ok, #{state=> #{}, ls_ets=> LSEts, diff=> #{}, diff_delete=> #{}}}.
 
 
 handle_call(join_remote, _, S) ->
@@ -82,71 +83,130 @@ handle_call({local_subscribe, DbRecordName, MapArgs2}, {Pid, _}, S) when is_map(
 %    true = ets:insert(LSEts, {{Pid, DbRecordName}, #{keys=> Keys, fields=> Fields}}),
 %    {reply, DbState3, S}.
 
-p_mutate(undefined, Diff) -> Diff;
-p_mutate({Mod, Fun, Args}, Diff) -> 
-    erlang:apply(Mod, Fun, [Diff]++Args).
-
 p_with_keys([], Diff) -> Diff;
-p_with_keys(Keys, Diff) -> maps:with(Keys, Diff).
+p_with_keys(Keys, Diff) when is_map(Diff) -> maps:with(Keys, Diff);
+p_with_keys(Keys, DeleteList) when is_list(DeleteList) -> 
+    lists:foldl(fun(Del=[H|_], A) ->
+        case lists:member(H, Keys) of
+            true -> A ++ [Del];
+            false -> A
+        end
+    end, [], DeleteList).
 
-p_with_diff([], Diff) -> Diff;
-p_with_diff(Fields, Diff) ->
-    DelKey = delete_KEY(),
-    maps:fold(fun
-          (K,V,A) when V =:= DelKey -> 
-            A#{K=> V};
-          (K,V,A) -> 
+p_with_fields([], Diff) -> Diff;
+p_with_fields(Fields, Diff) when is_map(Diff) ->
+    maps:fold(fun(K,V,A) ->
             With = maps:with(Fields, V),
             case erlang:map_size(With) of
                 0 -> A;
                 _ -> A#{K=> With}
             end
-        end, #{}, Diff).
+        end, #{}, Diff);
+p_with_fields(Fields, DeleteList) when is_list(DeleteList) ->
+    lists:foldl(fun
+        (Del=[_,Field|_], A) ->
+            case lists:member(Field, Fields) of
+                true -> A ++ [Del];
+                false -> A
+            end;
+        (_,A) -> A
+    end, [], DeleteList).
 
-p_proc_local_subcribe(LSEts, DbRecordName, Diff) ->
+p_mutate(undefined, Diff) -> Diff;
+p_mutate({Mod, Fun, Args}, Diff) -> 
+    erlang:apply(Mod, Fun, [Diff]++Args).
+
+p_proc_local_subcribe(LSEts, Diff, DiffDelete) ->
     Subs = ets:tab2list(LSEts),
+    Keys = sets:to_list(sets:from_list(
+        maps:keys(Diff) ++ maps:keys(DiffDelete))),
     lists:foldl(fun
         ({{Pid, all}, _}, Cache) ->
-            Pid ! {crdt_diff, DbRecordName, Diff},
+            lists:foreach(fun(Key) ->
+                TheDiff = maps:get(Key, Diff, #{}),
+                TheDeleteList = maps:get(Key, DiffDelete, []),
+                Pid ! {crdt_diff, Key, TheDiff, TheDeleteList}
+            end, Keys),
             Cache;
 
-        ({{Pid, DbRecordName2}, Q=#{keys:= Keys, fields:= Fields, mutator:= Mutator}}, Cache) 
-        when DbRecordName2 =:= DbRecordName ->
-            Phash = erlang:phash2(Q),
-            case maps:get(Phash, Cache, undefined) of
-                DiffMap when is_map(DiffMap) -> 
-                    Pid ! {crdt_diff, DbRecordName, DiffMap},
-                    Cache;
+        ({{Pid, DbRecordName}, 
+            Q=#{keys:= QKeys, fields:= QFields, mutator:= QMutator}}, Cache) 
+        ->
+            lists:foldl(fun
+                (Key, {CacheDiff2, CacheDelete2}) when Key =:= DbRecordName ->
+                    Phash = erlang:phash2(Q),
+                    {TheDiff, {CacheDiff33, CacheDelete33}} = case maps:get(Phash, CacheDiff2, undefined) of
+                        DM when is_map(DM) -> 
+                            {DM, {CacheDiff2, CacheDelete2}};
 
-                undefined ->
-                    Diff2 = p_with_keys(Keys, Diff),
-                    Diff3 = p_with_diff(Fields, Diff2),
-                    Diff4 = p_mutate(Mutator, Diff3),
-                    case Diff4 of
-                        Diff5 when erlang:map_size(Diff5) =:= 0 -> Cache;
-                        Diff5 -> 
-                            Pid ! {crdt_diff, DbRecordName, Diff5},
-                            maps:put(Phash, Diff5, Cache)
-                    end
-            end;
+                        undefined ->
+                            V = maps:get(Key, Diff, #{}),
+                            V2 = p_with_keys(QKeys, V),
+                            V3 = p_with_fields(QFields, V2),
+                            V4 = p_mutate(QMutator, V3),
+                            {V4, {maps:put(Phash, V4, CacheDiff2), CacheDelete2}}
+                    end,
+                    {TheDeleteList,Cache4} = case maps:get(Phash, CacheDelete2, undefined) of
+                        DL when is_list(DL) ->
+                            {DL, {CacheDiff33, CacheDelete33}};
 
-        ({{Pid, DbRecordName2}, _}, Cache) when DbRecordName2 =:= DbRecordName ->
-            Pid ! {crdt_diff, DbRecordName, Diff},
+                        undefined ->
+                            VV = maps:get(Key, DiffDelete, []),
+                            VV2 = p_with_keys(QKeys, VV),
+                            VV3 = p_with_fields(QFields, VV2),
+                            %V4 = p_mutate(QMutator, V3),
+                            {VV3, {CacheDiff33, maps:put(Phash, VV3, CacheDelete33)}}
+                    end,
+                    Pid ! {crdt_diff, Key, TheDiff, TheDeleteList},
+                    Cache4;
+                (_, Cache2) -> Cache2
+            end, Cache, Keys);
+
+        ({{Pid, DbRecordName}, _}, Cache) ->
+            lists:foreach(fun
+                (Key) when Key /= DbRecordName -> ignore;
+                (Key) when Key =:= DbRecordName ->
+                    TheDiff = maps:get(Key, Diff, #{}),
+                    TheDeleteList = maps:get(Key, DiffDelete, []),
+                    Pid ! {crdt_diff, Key, TheDiff, TheDeleteList}
+            end, Keys),
             Cache;
 
         (_,Cache) -> Cache
-    end, #{}, Subs).
+    end, {#{}, #{}}, Subs).
 
+handle_info(tick_push, S) ->
+    LSEts = maps:get(ls_ets, S),
+    Diff = maps:get(diff, S),
+    DiffDelete = maps:get(diff_delete, S),
+
+    p_proc_local_subcribe(LSEts, Diff, DiffDelete),
+
+    erlang:send_after(500, self(), tick_push),
+    {noreply, S#{diff=> #{}, diff_delete=> #{}}};
 
 handle_info({crdt_remote_diff, DbRecordName, Diff}, S) ->
     %io:format("~p: Got crdt remote diff~n ~p~n ~p~n", [?MODULE, DbRecordName, Diff]),
-    LSEts = maps:get(ls_ets, S),
+    OldDiff = maps:get(diff, S),
+    OldDiff2 = maps:get(DbRecordName, OldDiff, #{}),
+    NewDiff2 = nested_merge(OldDiff2, Diff),
+    NewDiff = maps:put(DbRecordName, NewDiff2, OldDiff),
+
     State = maps:get(state, S),
     DbRecord = maps:get(DbRecordName, State, #{}),
     DbRecord2 = nested_merge(DbRecord, Diff),
-    DbRecord3 = nested_delete(DbRecord2),
+    StateNew = maps:put(DbRecordName, DbRecord2, State),
+    {noreply, S#{state=> StateNew, diff=> NewDiff}};
 
-    p_proc_local_subcribe(LSEts, DbRecordName, Diff),
+handle_info({crdt_remote_diff_delete, DbRecordName, DeleteList}, S) ->
+    %io:format("~p: Got crdt remote diff delete~n ~p~n ~p~n", [?MODULE, DbRecordName, DeleteList]),
+    OldDiffDelete = maps:get(diff_delete, S),
+    OldDiffDelete2 = maps:get(DbRecordName, OldDiffDelete, []),
+    NewDiffDelete2 = sets:to_list(sets:from_list(OldDiffDelete2++DeleteList)),
+    NewDiffDelete = maps:put(DbRecordName, NewDiffDelete2, OldDiffDelete),
 
-    StateNew = maps:put(DbRecordName, DbRecord3, State),
-    {noreply, S#{state=> StateNew}}.
+    State = maps:get(state, S),
+    DbRecord = maps:get(DbRecordName, State, #{}),
+    DbRecord2 = nested_delete(DbRecord, DeleteList),
+    StateNew = maps:put(DbRecordName, DbRecord2, State),
+    {noreply, S#{state=> StateNew, diff_delete=> NewDiffDelete}}.
