@@ -29,10 +29,7 @@ local_subscribe() ->
 local_subscribe(DbRecordName) ->
     gen_server:call(crdt_remote_gen, {local_subscribe, DbRecordName}).
 local_subscribe(DbRecordName, MapArgs) ->
-    {DbState, Keys, Fields, Mutator} = gen_server:call(crdt_remote_gen, {local_subscribe, DbRecordName, MapArgs}),
-    DbState2 = crdt_remote_gen:p_with_keys(Keys, DbState),
-    DbState3 = crdt_remote_gen:p_with_fields(Fields, DbState2),
-    _DbState4 = crdt_remote_gen:p_mutate(Mutator, DbState3).
+    gen_server:call(crdt_remote_gen, {local_subscribe, DbRecordName, MapArgs}).
 %local_subscribe(DbRecordName, Keys) ->
 %    gen_server:call(crdt_remote_gen, {local_subscribe, DbRecordName, Keys}).
 %local_subscribe(DbRecordName, Keys, Fields) ->

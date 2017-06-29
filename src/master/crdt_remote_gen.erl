@@ -53,8 +53,6 @@ handle_call({local_subscribe, DbRecordName}, {Pid, _}, S) ->
 
 handle_call({local_subscribe, DbRecordName, MapArgs2}, {Pid, _}, S) when is_map(MapArgs2) -> 
     LSEts = maps:get(ls_ets, S),
-    State = maps:get(state, S),
-    DbState = maps:get(DbRecordName, State, #{}),
 
     MapArgs = maps:merge(
         #{keys=> [], fields=> [], mutator=> undefined},
@@ -65,7 +63,16 @@ handle_call({local_subscribe, DbRecordName, MapArgs2}, {Pid, _}, S) when is_map(
 
     true = ets:insert(LSEts, {{Pid, DbRecordName}, MapArgs}),
 
-    {reply, {DbState, Keys, Fields, Mutator}, S}.
+    DbState2 = case Keys of
+        [Key] ->
+            maps:get(Key, maps:get(DbRecordName, maps:get(state, S), #{}), #{});
+        _ ->
+            crdt_remote_gen:p_with_keys(Keys, maps:get(DbRecordName, maps:get(state, S), #{}))
+    end,
+    DbState3 = crdt_remote_gen:p_with_fields(Fields, DbState2),
+    DbState4 = crdt_remote_gen:p_mutate(Mutator, DbState3),
+
+    {reply, DbState4, S}.
 
 %handle_call({local_subscribe, DbRecordName, Keys}, {Pid, _}, S) when is_list(Keys) -> 
 %    LSEts = maps:get(ls_ets, S),
