@@ -65,7 +65,7 @@ handle_call({local_subscribe, DbRecordName, MapArgs2}, {Pid, _}, S) when is_map(
 
     DbState2 = case Keys of
         [Key] ->
-            maps:get(Key, maps:get(DbRecordName, maps:get(state, S), #{}), #{});
+            #{Key=> maps:get(Key, maps:get(DbRecordName, maps:get(state, S), #{}), #{})};
         _ ->
             crdt_remote_gen:p_with_keys(Keys, maps:get(DbRecordName, maps:get(state, S), #{}))
     end,
