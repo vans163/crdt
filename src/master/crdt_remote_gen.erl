@@ -161,8 +161,8 @@ p_proc_local_subcribe(LSEts, Diff, DiffDelete) ->
                             VV = maps:get(Key, DiffDelete, []),
                             VV2 = p_with_keys(QKeys, VV),
                             VV3 = p_with_fields(QFields, VV2),
-                            %V4 = p_mutate(QMutator, V3),
-                            {VV3, {CacheDiff33, maps:put(Phash, VV3, CacheDelete33)}}
+                            VV4 = p_mutate(QMutator, VV3),
+                            {VV3, {CacheDiff33, maps:put(Phash, VV4, CacheDelete33)}}
                     end,
                     Pid ! {crdt_diff, Key, TheDiff, TheDeleteList},
                     Cache4;
