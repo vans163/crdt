@@ -132,7 +132,11 @@ p_proc_local_subcribe(LSEts, Diff, DiffDelete) ->
             lists:foreach(fun(Key) ->
                 TheDiff = maps:get(Key, Diff, #{}),
                 TheDeleteList = maps:get(Key, DiffDelete, []),
-                Pid ! {crdt_diff, Key, TheDiff, TheDeleteList}
+                if
+                    erlang:map_size(TheDiff) > 0; TheDeleteList =/= [] ->
+                        Pid ! {crdt_diff, Key, TheDiff, TheDeleteList};
+                    true -> ignore                        
+                end
             end, Keys),
             Cache;
 
@@ -164,7 +168,11 @@ p_proc_local_subcribe(LSEts, Diff, DiffDelete) ->
                             VV4 = p_mutate(QMutator, VV3),
                             {VV3, {CacheDiff33, maps:put(Phash, VV4, CacheDelete33)}}
                     end,
-                    Pid ! {crdt_diff, Key, TheDiff, TheDeleteList},
+                    if
+                        erlang:map_size(TheDiff) > 0; TheDeleteList =/= [] ->
+                            Pid ! {crdt_diff, Key, TheDiff, TheDeleteList};
+                        true -> ignore                        
+                    end,
                     Cache4;
                 (_, Cache2) -> Cache2
             end, Cache, Keys);
@@ -175,7 +183,11 @@ p_proc_local_subcribe(LSEts, Diff, DiffDelete) ->
                 (Key) when Key =:= DbRecordName ->
                     TheDiff = maps:get(Key, Diff, #{}),
                     TheDeleteList = maps:get(Key, DiffDelete, []),
-                    Pid ! {crdt_diff, Key, TheDiff, TheDeleteList}
+                    if
+                        erlang:map_size(TheDiff) > 0; TheDeleteList =/= [] ->
+                            Pid ! {crdt_diff, Key, TheDiff, TheDeleteList};
+                        true -> ignore                        
+                    end
             end, Keys),
             Cache;
 
