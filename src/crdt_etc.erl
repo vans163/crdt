@@ -123,7 +123,7 @@ nested_delete_1_1(Map, DelKey, []) ->
         false -> Map
     end;
 nested_delete_1_1(Map, DelKey, [HK|T]) ->
-    case maps:is_key(HK) of
+    case maps:is_key(HK, Map) of
         true -> Map#{HK=> nested_delete_1_1(maps:get(HK, Map), DelKey, T)};
         false -> Map
     end.
