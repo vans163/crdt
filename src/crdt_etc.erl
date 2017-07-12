@@ -42,6 +42,18 @@ diff_map(Old, New) when is_map(Old) ->
     maps:merge(maps:merge(Map1, Map2), Map3);
 diff_map(Old, New) when Old =/= New -> New.
 
+diff_map_delete(Map) -> diff_map_delete(Map, [], []).
+diff_map_delete(Map, DList, KeyList) ->
+    maps:fold(fun(K,V,{AMap, ADList})->
+        if
+            is_map(V) -> 
+                {V2, ADList2} = diff_map_delete(V, ADList, KeyList++[K]),
+                {AMap#{K=> V2}, ADList++ADList2};
+            V == ?DELETE_KEY -> {maps:remove(K, AMap), ADList++([KeyList++[K]])};
+            true -> {AMap, ADList}
+        end
+    end, {Map, DList}, Map).
+    
 
 nested_merge(Old, New) when is_map(Old), is_map(New) ->
     OldKeys = maps:keys(Old),
@@ -68,6 +80,34 @@ nested_merge(Old, New) when is_map(Old), is_map(New) ->
     Merge = maps:merge(Map2, Map3),
     maps:merge(Old, Merge).
 
+merge_nested(Old, New) when is_map(Old), is_map(New) ->
+    MergeMap = maps:fold(fun(KNew, VNew, Acc) ->
+            case map:is_key(KNew, Old) of
+                false -> Acc#{KNew=> VNew};
+                true -> 
+                    VOld = maps:get(KNew, Old),
+                    if
+                        VOld =:= VNew -> Acc;
+                        is_map(VOld), is_map(VNew) -> 
+                            Acc#{KNew=> merge_nested(VOld, VNew)};
+                        true -> Acc#{KNew=> VNew}
+                    end
+            end
+        end, #{}, New
+    ),
+    maps:merge(Old, MergeMap).
+
+merge_nested2(Old, New) when is_map(Old), is_map(New) ->
+    maps:fold(fun(KNew, VNew, Acc) ->
+            VOld = maps:get(KNew, Old, 'undefined_zxc1253afzu673e980_does_not_exist'),
+            if
+                VOld =:= VNew -> Acc;
+                is_map(VOld), is_map(VNew) -> 
+                    Acc#{KNew=> merge_nested2(VOld, VNew)};
+                true -> Acc#{KNew=> VNew}
+            end
+        end, Old, New
+    ).
 
 nested_delete(Map, DeleteList) when is_map(Map) ->
     nested_delete_1(Map, DeleteList).

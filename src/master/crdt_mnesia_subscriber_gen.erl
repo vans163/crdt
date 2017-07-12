@@ -2,7 +2,7 @@
 -behavior(gen_server).
 -compile(export_all).
 
--import(crdt_etc, [delete_KEY/0, merge/1, diff_map/2, nested_merge/2, nested_delete/2]).
+-import(crdt_etc, [delete_KEY/0, merge/1, diff_map/2, diff_map_delete/1, nested_merge/2, nested_delete/2]).
 
 handle_cast(_, S) -> {noreply, S}.
 code_change(_OldVersion, S, _Extra) -> {ok, S}. 
@@ -69,10 +69,14 @@ handle_info({mnesia_table_event, {write, _, {_, Uuid, NewState}, [{_, Uuid, OldS
 
         OldNewDiff ->
             Diff = maps:get(diff, S),
+            DiffDelete = maps:get(diff_delete, S),
             DiffUuidMap = maps:get(Uuid, Diff, #{}),
-            DiffUuidMapNew = nested_merge(DiffUuidMap, OldNewDiff),
+            {OldNewDiffDeleted, DeleteList} = crdt_etc:diff_map_delete(OldNewDiff),
+            DiffUuidMapNew = nested_merge(DiffUuidMap, OldNewDiffDeleted),
+
             DiffNew = maps:put(Uuid, DiffUuidMapNew, Diff),
-            {noreply, S#{diff=> DiffNew}}
+            DiffDeleteNew = sets:to_list(sets:from_list(DiffDelete++DeleteList)),
+            {noreply, S#{diff=> DiffNew, diff_delete=> DiffDeleteNew}}
     end;
 
 % -- Delete
