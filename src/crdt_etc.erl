@@ -117,9 +117,17 @@ nested_delete_1(Map, [TermH|TermT]) ->
     Terms = lists:sublist(TermH, length(TermH)-1),
     Map2 = nested_delete_1_1(Map, DelKey, Terms),
     nested_delete_1(Map2, TermT).
-nested_delete_1_1(Map, DelKey, []) -> maps:remove(DelKey, Map);
+nested_delete_1_1(Map, DelKey, []) -> 
+    case maps:is_key(DelKey, Map) of
+        true -> maps:remove(DelKey, Map);
+        false -> Map
+    end;
 nested_delete_1_1(Map, DelKey, [HK|T]) ->
-    Map#{HK=> nested_delete_1_1(maps:get(HK, Map), DelKey, T)}.
+    case maps:is_key(HK) of
+        true -> Map#{HK=> nested_delete_1_1(maps:get(HK, Map), DelKey, T)};
+        false -> Map
+    end.
+    
 
 
 %nested_delete2(Map, DeleteList) when is_map(Map) ->
