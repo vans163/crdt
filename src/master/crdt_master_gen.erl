@@ -44,7 +44,7 @@ p_remote_send_base_state(RemotePid, MEts) ->
     MPids = [MPid||{_,#{pid:=MPid}}<-MSubs],
     lists:foreach(fun(MPid) -> 
         {DbRecordName, State} = gen_server:call(MPid, data),
-        RemotePid ! {crdt_remote_diff, DbRecordName, State}
+        RemotePid ! {crdt_remote_diff, DbRecordName, State, []}
     end, MPids).
 
 p_remote_subscribe(RemotePid, MEts, RSubs) ->
