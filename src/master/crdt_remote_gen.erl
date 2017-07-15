@@ -116,7 +116,7 @@ p_with_fields(Fields, DeleteList) when is_list(DeleteList) ->
                 true -> A ++ [Del];
                 false -> A
             end;
-        (_,A) -> A
+        (_,A) -> A ++ [Del]
     end, [], DeleteList).
 
 p_mutate(undefined, Diff) -> Diff;
@@ -125,33 +125,34 @@ p_mutate({Mod, Fun, Args}, Diff) ->
 
 p_proc_local_subcribe(LSEts, Diff, DiffDelete) ->
     Subs = ets:tab2list(LSEts),
-    Keys = sets:to_list(sets:from_list(
+    DbRecords = sets:to_list(sets:from_list(
         maps:keys(Diff) ++ maps:keys(DiffDelete))),
     lists:foldl(fun
         ({{Pid, all}, _}, Cache) ->
-            lists:foreach(fun(Key) ->
-                TheDiff = maps:get(Key, Diff, #{}),
-                TheDeleteList = maps:get(Key, DiffDelete, []),
+            lists:foreach(fun(DbRecord) ->
+                TheDiff = maps:get(DbRecord, Diff, #{}),
+                TheDeleteList = maps:get(DbRecord, DiffDelete, []),
                 if
                     erlang:map_size(TheDiff) > 0; TheDeleteList =/= [] ->
-                        Pid ! {crdt_diff, Key, TheDiff, TheDeleteList};
+                        Pid ! {crdt_diff, DbRecord, TheDiff, TheDeleteList};
                     true -> ignore                        
                 end
-            end, Keys),
+            end, DbRecords),
             Cache;
 
         ({{Pid, DbRecordName}, 
             Q=#{keys:= QKeys, fields:= QFields, mutator:= QMutator}}, Cache) 
         ->
             lists:foldl(fun
-                (Key, {CacheDiff2, CacheDelete2}) when Key =:= DbRecordName ->
-                    Phash = erlang:phash2(Q),
+                (DbRecord, Cache2) when DbRecord =/= DbRecordName -> Cache2
+                (DbRecord, {CacheDiff2, CacheDelete2}) when DbRecord =:= DbRecordName ->
+                    Phash = erlang:phash2({DbRecordName, Q}),
                     {TheDiff, {CacheDiff33, CacheDelete33}} = case maps:get(Phash, CacheDiff2, undefined) of
                         DM when is_map(DM) -> 
                             {DM, {CacheDiff2, CacheDelete2}};
 
                         undefined ->
-                            V = maps:get(Key, Diff, #{}),
+                            V = maps:get(DbRecord, Diff, #{}),
                             V2 = p_with_keys(QKeys, V),
                             V3 = p_with_fields(QFields, V2),
                             V4 = p_mutate(QMutator, V3),
@@ -162,33 +163,32 @@ p_proc_local_subcribe(LSEts, Diff, DiffDelete) ->
                             {DL, {CacheDiff33, CacheDelete33}};
 
                         undefined ->
-                            VV = maps:get(Key, DiffDelete, []),
+                            VV = maps:get(DbRecord, DiffDelete, []),
                             VV2 = p_with_keys(QKeys, VV),
                             VV3 = p_with_fields(QFields, VV2),
                             VV4 = p_mutate(QMutator, VV3),
-                            {VV3, {CacheDiff33, maps:put(Phash, VV4, CacheDelete33)}}
+                            {VV4, {CacheDiff33, maps:put(Phash, VV4, CacheDelete33)}}
                     end,
                     if
                         erlang:map_size(TheDiff) > 0; TheDeleteList =/= [] ->
-                            Pid ! {crdt_diff, Key, TheDiff, TheDeleteList};
+                            Pid ! {crdt_diff, DbRecord, TheDiff, TheDeleteList};
                         true -> ignore                        
                     end,
-                    Cache4;
-                (_, Cache2) -> Cache2
-            end, Cache, Keys);
+                    Cache4
+            end, Cache, DbRecords);
 
         ({{Pid, DbRecordName}, _}, Cache) ->
             lists:foreach(fun
-                (Key) when Key /= DbRecordName -> ignore;
-                (Key) when Key =:= DbRecordName ->
-                    TheDiff = maps:get(Key, Diff, #{}),
-                    TheDeleteList = maps:get(Key, DiffDelete, []),
+                (DbRecord) when DbRecord /= DbRecordName -> ignore;
+                (DbRecord) when DbRecord =:= DbRecordName ->
+                    TheDiff = maps:get(DbRecord, Diff, #{}),
+                    TheDeleteList = maps:get(DbRecord, DiffDelete, []),
                     if
                         erlang:map_size(TheDiff) > 0; TheDeleteList =/= [] ->
-                            Pid ! {crdt_diff, Key, TheDiff, TheDeleteList};
+                            Pid ! {crdt_diff, DbRecord, TheDiff, TheDeleteList};
                         true -> ignore                        
                     end
-            end, Keys),
+            end, DbRecords),
             Cache;
 
         (_,Cache) -> Cache
@@ -204,21 +204,13 @@ handle_info(tick_push, S) ->
     erlang:send_after(500, self(), tick_push),
     {noreply, S#{diff=> #{}, diff_delete=> #{}}};
 
-handle_info({crdt_remote_diff, DbRecordName, Diff}, S) ->
+handle_info({crdt_remote_diff, DbRecordName, Diff, DeleteList}, S) ->
     %io:format("~p: Got crdt remote diff~n ~p~n ~p~n", [?MODULE, DbRecordName, Diff]),
     OldDiff = maps:get(diff, S),
     OldDiff2 = maps:get(DbRecordName, OldDiff, #{}),
     NewDiff2 = nested_merge(OldDiff2, Diff),
     NewDiff = maps:put(DbRecordName, NewDiff2, OldDiff),
 
-    State = maps:get(state, S),
-    DbRecord = maps:get(DbRecordName, State, #{}),
-    DbRecord2 = nested_merge(DbRecord, Diff),
-    StateNew = maps:put(DbRecordName, DbRecord2, State),
-    {noreply, S#{state=> StateNew, diff=> NewDiff}};
-
-handle_info({crdt_remote_diff_delete, DbRecordName, DeleteList}, S) ->
-    %io:format("~p: Got crdt remote diff delete~n ~p~n ~p~n", [?MODULE, DbRecordName, DeleteList]),
     OldDiffDelete = maps:get(diff_delete, S),
     OldDiffDelete2 = maps:get(DbRecordName, OldDiffDelete, []),
     NewDiffDelete2 = sets:to_list(sets:from_list(OldDiffDelete2++DeleteList)),
@@ -226,6 +218,7 @@ handle_info({crdt_remote_diff_delete, DbRecordName, DeleteList}, S) ->
 
     State = maps:get(state, S),
     DbRecord = maps:get(DbRecordName, State, #{}),
-    DbRecord2 = nested_delete(DbRecord, DeleteList),
-    StateNew = maps:put(DbRecordName, DbRecord2, State),
-    {noreply, S#{state=> StateNew, diff_delete=> NewDiffDelete}}.
+    DbRecord2 = nested_merge(DbRecord, Diff),
+    DbRecord3 = nested_delete(DbRecord2, DeleteList),
+    StateNew = maps:put(DbRecordName, DbRecord3, State),
+    {noreply, S#{state=> StateNew, diff=> NewDiff, diff_delete=> NewDiffDelete}};

@@ -36,24 +36,20 @@ handle_info(tick_push, S) ->
     Parent = maps:get(parent, S),
     DbRecordName = maps:get(dbrecordname, S),
     Diff = maps:get(diff, S),
-    DiffDelete = maps:get(diff_delete, S),
+    DeleteList = maps:get(diff_delete, S),
     Data = maps:get(data, S),
 
-    Data2 = case erlang:map_size(Diff) of
-        0 -> Data;
-        _ -> 
-            Parent ! {crdt_master_diff, DbRecordName, Diff},
-            nested_merge(Data, Diff)
-    end,
-    Data3 = case length(DiffDelete) of
-        0 -> Data2;
-        _ -> 
-            Parent ! {crdt_master_diff_delete, DbRecordName, DiffDelete},
-            nested_delete(Data2, DiffDelete)
+    HasDiff = (erlang:map_size(Diff) > 0) or (length(DeleteList) > 0),
+    Data2 = case HasDiff of
+        false -> Data;
+        true ->
+            Parent ! {crdt_master_diff, DbRecordName, Diff, DeleteList},
+            Data2 = nested_merge(Data, Diff),
+            nested_delete(Data2, DeleteList)
     end,
 
     erlang:send_after(200, self(), tick_push),
-    {noreply, S#{data=> Data3, diff=> #{}, diff_delete=> []}};
+    {noreply, S#{data=> Data2, diff=> #{}, diff_delete=> []}};
 
 % -- Add
 handle_info({mnesia_table_event, {write, _, {_, Uuid, State}, [], _}}, S) ->
@@ -70,12 +66,15 @@ handle_info({mnesia_table_event, {write, _, {_, Uuid, NewState}, [{_, Uuid, OldS
         OldNewDiff ->
             Diff = maps:get(diff, S),
             DiffDelete = maps:get(diff_delete, S),
-            DiffUuidMap = maps:get(Uuid, Diff, #{}),
-            {OldNewDiffDeleted, DeleteList} = crdt_etc:diff_map_delete(OldNewDiff),
-            DiffUuidMapNew = nested_merge(DiffUuidMap, OldNewDiffDeleted),
 
+            DiffUuidMap = maps:get(Uuid, Diff, #{}),
+            DiffUuidMapNew = nested_merge(DiffUuidMap, OldNewDiffDeleted),
             DiffNew = maps:put(Uuid, DiffUuidMapNew, Diff),
+
+            {OldNewDiffDeleted, DeleteList2} = crdt_etc:diff_map_delete(OldNewDiff),
+            DeleteList = [[Uuid]++X||X<-DeleteList2],
             DiffDeleteNew = sets:to_list(sets:from_list(DiffDelete++DeleteList)),
+
             {noreply, S#{diff=> DiffNew, diff_delete=> DiffDeleteNew}}
     end;
 

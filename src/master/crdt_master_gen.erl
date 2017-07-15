@@ -111,25 +111,13 @@ handle_info({'EXIT', Pid, Reason}, S) ->
     end;
 
 
-handle_info({crdt_master_diff, DbRecordName, Diff}, S) ->
+handle_info({crdt_master_diff, DbRecordName, Diff, DeleteList}, S) ->
     %io:format("~p: Got crdt master diff~n ~p~n ~p~n", [?MODULE, DbRecordName, Diff]),
     RSubs = maps:get(r_subs, S),
     Pids = [Pid||{_,#{pid:=Pid}}<-maps:to_list(RSubs)],
     %io:format("~p: remote subs ~p~n", [?MODULE, RemoteSubs]),
 
     lists:foreach(fun(Pid) -> 
-        Pid ! {crdt_remote_diff, DbRecordName, Diff}
+        Pid ! {crdt_remote_diff, DbRecordName, Diff, DeleteList}
     end, Pids),
     {noreply, S};
-
-handle_info({crdt_master_diff_delete, DbRecordName, DeleteList}, S) ->
-    %io:format("~p: Got crdt master diff delete~n ~p~n ~p~n", [?MODULE, DbRecordName, DeleteList]),
-    RSubs = maps:get(r_subs, S),
-    Pids = [Pid||{_,#{pid:=Pid}}<-maps:to_list(RSubs)],
-    %io:format("~p: remote subs ~p~n", [?MODULE, RemoteSubs]),
-
-    lists:foreach(fun(Pid) -> 
-        Pid ! {crdt_remote_diff_delete, DbRecordName, DeleteList}
-    end, Pids),
-    {noreply, S}.
-
