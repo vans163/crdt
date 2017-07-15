@@ -116,7 +116,7 @@ p_with_fields(Fields, DeleteList) when is_list(DeleteList) ->
                 true -> A ++ [Del];
                 false -> A
             end;
-        (_,A) -> A ++ [Del]
+        (Del,A) -> A ++ [Del]
     end, [], DeleteList).
 
 p_mutate(undefined, Diff) -> Diff;
@@ -144,7 +144,7 @@ p_proc_local_subcribe(LSEts, Diff, DiffDelete) ->
             Q=#{keys:= QKeys, fields:= QFields, mutator:= QMutator}}, Cache) 
         ->
             lists:foldl(fun
-                (DbRecord, Cache2) when DbRecord =/= DbRecordName -> Cache2
+                (DbRecord, Cache2) when DbRecord =/= DbRecordName -> Cache2;
                 (DbRecord, {CacheDiff2, CacheDelete2}) when DbRecord =:= DbRecordName ->
                     Phash = erlang:phash2({DbRecordName, Q}),
                     {TheDiff, {CacheDiff33, CacheDelete33}} = case maps:get(Phash, CacheDiff2, undefined) of
@@ -221,4 +221,4 @@ handle_info({crdt_remote_diff, DbRecordName, Diff, DeleteList}, S) ->
     DbRecord2 = nested_merge(DbRecord, Diff),
     DbRecord3 = nested_delete(DbRecord2, DeleteList),
     StateNew = maps:put(DbRecordName, DbRecord3, State),
-    {noreply, S#{state=> StateNew, diff=> NewDiff, diff_delete=> NewDiffDelete}};
+    {noreply, S#{state=> StateNew, diff=> NewDiff, diff_delete=> NewDiffDelete}}.

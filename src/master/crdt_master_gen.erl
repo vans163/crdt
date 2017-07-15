@@ -120,4 +120,4 @@ handle_info({crdt_master_diff, DbRecordName, Diff, DeleteList}, S) ->
     lists:foreach(fun(Pid) -> 
         Pid ! {crdt_remote_diff, DbRecordName, Diff, DeleteList}
     end, Pids),
-    {noreply, S};
+    {noreply, S}.
